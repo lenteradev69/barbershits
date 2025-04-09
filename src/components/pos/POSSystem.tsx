@@ -1,4 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { useTransactions } from "@/contexts/TransactionContext";
+import { v4 as uuidv4 } from "uuid";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -66,6 +68,9 @@ interface CartItem {
 }
 
 const POSSystem = () => {
+  // Get addTransaction function from context
+  const { addTransaction } = useTransactions();
+
   // Step state to track the current step in the transaction flow
   const [currentStep, setCurrentStep] = useState<number>(1);
 
@@ -90,8 +95,8 @@ const POSSystem = () => {
   const [customerDialogOpen, setCustomerDialogOpen] = useState<boolean>(true);
   const [receiptDialogOpen, setReceiptDialogOpen] = useState<boolean>(false);
 
-  // Mock data
-  const customers: Customer[] = [
+  // State for customers, services, and products
+  const [customers, setCustomers] = useState<Customer[]>([
     {
       id: "1",
       name: "John Doe",
@@ -113,17 +118,17 @@ const POSSystem = () => {
       avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=mike",
       visits: 8,
     },
-  ];
+  ]);
 
-  const services: Service[] = [
+  const [services, setServices] = useState<Service[]>([
     { id: "s1", name: "Regular Haircut", price: 50000, category: "Haircut" },
     { id: "s2", name: "Beard Trim", price: 30000, category: "Grooming" },
     { id: "s3", name: "Hair Coloring", price: 150000, category: "Color" },
     { id: "s4", name: "Shave", price: 40000, category: "Grooming" },
     { id: "s5", name: "Kids Haircut", price: 35000, category: "Haircut" },
-  ];
+  ]);
 
-  const products: Product[] = [
+  const [products, setProducts] = useState<Product[]>([
     {
       id: "p1",
       name: "Pomade",
@@ -145,7 +150,49 @@ const POSSystem = () => {
       stock: 12,
       category: "Hair Products",
     },
-  ];
+  ]);
+
+  // Load data from localStorage on component mount
+  useEffect(() => {
+    // Load customers
+    const storedCustomers = localStorage.getItem("barbershop_customers");
+    if (storedCustomers) {
+      try {
+        setCustomers(JSON.parse(storedCustomers));
+      } catch (error) {
+        console.error("Failed to parse stored customers:", error);
+      }
+    } else {
+      // If no customers in localStorage, save the default ones
+      localStorage.setItem("barbershop_customers", JSON.stringify(customers));
+    }
+
+    // Load services
+    const storedServices = localStorage.getItem("barbershop_services");
+    if (storedServices) {
+      try {
+        setServices(JSON.parse(storedServices));
+      } catch (error) {
+        console.error("Failed to parse stored services:", error);
+      }
+    } else {
+      // If no services in localStorage, save the default ones
+      localStorage.setItem("barbershop_services", JSON.stringify(services));
+    }
+
+    // Load products
+    const storedProducts = localStorage.getItem("barbershop_products");
+    if (storedProducts) {
+      try {
+        setProducts(JSON.parse(storedProducts));
+      } catch (error) {
+        console.error("Failed to parse stored products:", error);
+      }
+    } else {
+      // If no products in localStorage, save the default ones
+      localStorage.setItem("barbershop_products", JSON.stringify(products));
+    }
+  }, []);
 
   // Calculate cart total
   const calculateSubtotal = () => {
@@ -243,12 +290,31 @@ const POSSystem = () => {
 
   // Handle payment completion
   const handleCompletePayment = () => {
+    // Create a new transaction object
+    const newTransaction = {
+      id: uuidv4(),
+      date: new Date().toISOString(),
+      customer: selectedCustomer,
+      items: cart,
+      subtotal: calculateSubtotal(),
+      discount: parseFloat(discount) || 0,
+      total: calculateTotal(),
+      paymentMethod: paymentMethod,
+      cashReceived:
+        paymentMethod === "cash" ? parseFloat(cashReceived) || 0 : undefined,
+      change: paymentMethod === "cash" ? calculateChange() : undefined,
+    };
+
+    // Add the transaction to the context
+    addTransaction(newTransaction);
+
+    // Show receipt
     setReceiptDialogOpen(true);
   };
 
   // Handle transaction completion
   const handleCompleteTransaction = () => {
-    // In a real app, this would save the transaction to local storage or a database
+    // Reset all state for a new transaction
     setCurrentStep(1);
     setSelectedCustomer(null);
     setCart([]);
@@ -256,6 +322,9 @@ const POSSystem = () => {
     setCashReceived("");
     setDiscount("");
     setReceiptDialogOpen(false);
+
+    // Show success message
+    alert("Transaction completed successfully!");
   };
 
   // Render step indicator

@@ -43,7 +43,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
       icon: <Users className="h-5 w-5" />,
     },
     {
-      name: "Products",
+      name: "Services & Products",
       path: "/products",
       icon: <ShoppingBag className="h-5 w-5" />,
     },
@@ -253,7 +253,9 @@ const AppLayout = ({ children }: AppLayoutProps) => {
             className={`flex flex-1 flex-col items-center justify-center py-2 ${isActive(item.path) ? "text-gold" : "text-muted-foreground hover:text-foreground"}`}
           >
             {item.icon}
-            <span className="mt-1 text-xs">{item.name}</span>
+            <span className="mt-1 text-xs">
+              {item.name === "Services & Products" ? "Services" : item.name}
+            </span>
           </Link>
         ))}
       </nav>

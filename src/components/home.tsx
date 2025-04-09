@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   Card,
   CardContent,
@@ -20,142 +20,127 @@ import {
   Users,
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { useTransactions } from "@/contexts/TransactionContext";
 
 const HomePage = () => {
-  // Mock data for dashboard
-  const recentTransactions = [
-    {
-      id: 1,
-      customer: "Ahmad Rizky",
-      service: "Haircut + Beard Trim",
-      amount: "Rp 150.000",
-      time: "10:30 AM",
-      paymentMethod: "Cash",
-    },
-    {
-      id: 2,
-      customer: "Budi Santoso",
-      service: "Premium Haircut",
-      amount: "Rp 100.000",
-      time: "11:45 AM",
-      paymentMethod: "QRIS",
-    },
-    {
-      id: 3,
-      customer: "Cahya Wijaya",
-      service: "Hair Coloring",
-      amount: "Rp 250.000",
-      time: "1:15 PM",
-      paymentMethod: "Cash",
-    },
-  ];
+  const navigate = useNavigate();
+  const { transactions, getRecentTransactions, getTransactionSummary } =
+    useTransactions();
+  const [todayStats, setTodayStats] = useState({
+    revenue: 0,
+    customers: 0,
+    appointments: 8, // Default value for appointments
+    lowStockProducts: 3, // Default value for low stock products
+  });
+  const [popularServices, setPopularServices] = useState([
+    { id: 1, name: "Regular Haircut", count: 0, percentage: 0 },
+    { id: 2, name: "Beard Trim", count: 0, percentage: 0 },
+    { id: 3, name: "Hair Coloring", count: 0, percentage: 0 },
+    { id: 4, name: "Premium Haircut", count: 0, percentage: 0 },
+  ]);
 
-  const popularServices = [
-    { id: 1, name: "Regular Haircut", count: 28, percentage: 70 },
-    { id: 2, name: "Beard Trim", count: 23, percentage: 58 },
-    { id: 3, name: "Hair Coloring", count: 17, percentage: 43 },
-    { id: 4, name: "Premium Haircut", count: 15, percentage: 38 },
-  ];
+  // Get recent transactions from context
+  const recentTransactions = getRecentTransactions(3).map((transaction) => ({
+    id: transaction.id,
+    customer: transaction.customer?.name || "Walk-in Customer",
+    service: transaction.items.map((item) => item.name).join(", "),
+    amount: formatIDR(transaction.total),
+    time: new Date(transaction.date).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
+    paymentMethod: transaction.paymentMethod === "cash" ? "Cash" : "QRIS",
+  }));
+
+  // Format currency in IDR
+  const formatIDR = (amount) => {
+    return new Intl.NumberFormat("id-ID", {
+      style: "currency",
+      currency: "IDR",
+      minimumFractionDigits: 0,
+    }).format(amount);
+  };
+
+  // Calculate today's stats
+  useEffect(() => {
+    // Get today's date range
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    // Filter transactions for today
+    const todayTransactions = transactions.filter((transaction) => {
+      const transactionDate = new Date(transaction.date);
+      return transactionDate >= today && transactionDate < tomorrow;
+    });
+
+    // Calculate today's revenue
+    const todayRevenue = todayTransactions.reduce(
+      (sum, transaction) => sum + transaction.total,
+      0,
+    );
+
+    // Count unique customers today
+    const uniqueCustomers = new Set();
+    todayTransactions.forEach((transaction) => {
+      if (transaction.customer?.id) {
+        uniqueCustomers.add(transaction.customer.id);
+      } else {
+        uniqueCustomers.add("walk-in-" + transaction.id);
+      }
+    });
+
+    setTodayStats({
+      ...todayStats,
+      revenue: todayRevenue,
+      customers: uniqueCustomers.size,
+    });
+
+    // Calculate popular services
+    const serviceCount = {};
+    let totalServices = 0;
+
+    transactions.forEach((transaction) => {
+      transaction.items.forEach((item) => {
+        if (item.type === "service") {
+          if (!serviceCount[item.name]) {
+            serviceCount[item.name] = 0;
+          }
+          serviceCount[item.name] += item.quantity;
+          totalServices += item.quantity;
+        }
+      });
+    });
+
+    // Convert to array and sort by count
+    const sortedServices = Object.entries(serviceCount)
+      .map(([name, count]) => ({
+        name,
+        count,
+        percentage:
+          totalServices > 0 ? Math.round((count / totalServices) * 100) : 0,
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 4);
+
+    // If we have actual service data, update the state
+    if (sortedServices.length > 0) {
+      setPopularServices(
+        sortedServices.map((service, index) => ({
+          id: index + 1,
+          ...service,
+        })),
+      );
+    }
+  }, [transactions]);
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white p-4 pb-20 md:pb-4 md:pl-72">
-      {/* Mobile Bottom Navigation */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-800 flex justify-around p-2 z-10">
-        <Link to="/" className="flex flex-col items-center text-yellow-400">
-          <Home size={20} />
-          <span className="text-xs mt-1">Home</span>
-        </Link>
-        <Link
-          to="/pos"
-          className="flex flex-col items-center text-gray-400 hover:text-yellow-400"
-        >
-          <DollarSign size={20} />
-          <span className="text-xs mt-1">POS</span>
-        </Link>
-        <Link
-          to="/customers"
-          className="flex flex-col items-center text-gray-400 hover:text-yellow-400"
-        >
-          <Users size={20} />
-          <span className="text-xs mt-1">Customers</span>
-        </Link>
-        <Link
-          to="/products"
-          className="flex flex-col items-center text-gray-400 hover:text-yellow-400"
-        >
-          <Scissors size={20} />
-          <span className="text-xs mt-1">Services</span>
-        </Link>
-        <Link
-          to="/analytics"
-          className="flex flex-col items-center text-gray-400 hover:text-yellow-400"
-        >
-          <BarChart3 size={20} />
-          <span className="text-xs mt-1">Analytics</span>
-        </Link>
-      </div>
+    <div className="min-h-screen bg-background text-foreground p-4">
+      {/* Mobile Bottom Navigation - This is now handled by AppLayout component */}
 
-      {/* Desktop Sidebar - Hidden on mobile */}
-      <div className="hidden md:flex fixed left-0 top-0 bottom-0 w-64 bg-gray-900 border-r border-gray-800 flex-col p-4 z-20">
-        <div className="flex items-center mb-8">
-          <div className="bg-yellow-400 text-black p-2 rounded-md mr-2">
-            <Scissors size={24} />
-          </div>
-          <h1 className="text-xl font-bold">BarberShop</h1>
-        </div>
-
-        <nav className="flex-1">
-          <Link
-            to="/"
-            className="flex items-center p-3 mb-2 rounded-md bg-gray-800 text-yellow-400"
-          >
-            <Home className="mr-3" size={20} />
-            <span>Dashboard</span>
-          </Link>
-          <Link
-            to="/pos"
-            className="flex items-center p-3 mb-2 rounded-md hover:bg-gray-800 text-gray-300 hover:text-yellow-400"
-          >
-            <DollarSign className="mr-3" size={20} />
-            <span>POS System</span>
-          </Link>
-          <Link
-            to="/customers"
-            className="flex items-center p-3 mb-2 rounded-md hover:bg-gray-800 text-gray-300 hover:text-yellow-400"
-          >
-            <Users className="mr-3" size={20} />
-            <span>Customers</span>
-          </Link>
-          <Link
-            to="/products"
-            className="flex items-center p-3 mb-2 rounded-md hover:bg-gray-800 text-gray-300 hover:text-yellow-400"
-          >
-            <Scissors className="mr-3" size={20} />
-            <span>Services & Products</span>
-          </Link>
-          <Link
-            to="/analytics"
-            className="flex items-center p-3 mb-2 rounded-md hover:bg-gray-800 text-gray-300 hover:text-yellow-400"
-          >
-            <BarChart3 className="mr-3" size={20} />
-            <span>Analytics</span>
-          </Link>
-        </nav>
-
-        <div className="border-t border-gray-800 pt-4 mt-auto">
-          <div className="flex items-center">
-            <Avatar className="h-10 w-10 mr-3">
-              <AvatarImage src="https://api.dicebear.com/7.x/avataaars/svg?seed=barber" />
-              <AvatarFallback>BA</AvatarFallback>
-            </Avatar>
-            <div>
-              <p className="text-sm font-medium">Barber Admin</p>
-              <p className="text-xs text-gray-400">admin@barbershop.com</p>
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* Desktop Sidebar - Now handled by AppLayout component */}
 
       {/* Main Content */}
       <div className="space-y-6">
@@ -166,7 +151,10 @@ const HomePage = () => {
               Welcome back to your barbershop dashboard
             </p>
           </div>
-          <Button className="bg-yellow-500 hover:bg-yellow-600 text-black">
+          <Button
+            className="bg-yellow-500 hover:bg-yellow-600 text-black"
+            onClick={() => navigate("/pos")}
+          >
             <ShoppingBag className="mr-2 h-4 w-4" /> New Transaction
           </Button>
         </header>
@@ -180,9 +168,13 @@ const HomePage = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">Rp 1,250,000</div>
+              <div className="text-2xl font-bold">
+                {formatIDR(todayStats.revenue)}
+              </div>
               <p className="text-green-400 text-sm flex items-center mt-1">
-                +15% from yesterday
+                {todayStats.revenue > 0
+                  ? "Active sales today"
+                  : "No sales yet today"}
               </p>
             </CardContent>
           </Card>
@@ -194,9 +186,11 @@ const HomePage = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">12</div>
+              <div className="text-2xl font-bold">{todayStats.customers}</div>
               <p className="text-green-400 text-sm flex items-center mt-1">
-                +2 from yesterday
+                {todayStats.customers > 0
+                  ? `${todayStats.customers} customer(s) served`
+                  : "No customers yet"}
               </p>
             </CardContent>
           </Card>
@@ -208,7 +202,9 @@ const HomePage = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">8</div>
+              <div className="text-2xl font-bold">
+                {todayStats.appointments}
+              </div>
               <p className="text-gray-400 text-sm flex items-center mt-1">
                 Next: 2:30 PM
               </p>
@@ -222,7 +218,9 @@ const HomePage = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">3</div>
+              <div className="text-2xl font-bold">
+                {todayStats.lowStockProducts}
+              </div>
               <p className="text-yellow-400 text-sm flex items-center mt-1">
                 Needs attention
               </p>
@@ -284,6 +282,7 @@ const HomePage = () => {
               <Button
                 variant="outline"
                 className="w-full mt-4 border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800"
+                onClick={() => navigate("/analytics")}
               >
                 View All Transactions
               </Button>
@@ -370,6 +369,7 @@ const HomePage = () => {
                 <Button
                   variant="outline"
                   className="w-full mt-4 border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800"
+                  onClick={() => navigate("/appointments")}
                 >
                   View Full Schedule
                 </Button>

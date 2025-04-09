@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { useTransactions } from "@/contexts/TransactionContext";
 import {
   Card,
   CardContent,
@@ -52,7 +53,9 @@ interface AnalyticsData {
 }
 
 const AnalyticsDashboard = () => {
-  // Mock data for the analytics dashboard
+  const { transactions, getTransactionSummary } = useTransactions();
+
+  // Initial state with mock data
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData>({
     revenue: {
       daily: [120000, 150000, 180000, 130000, 200000, 250000, 190000],
@@ -98,6 +101,166 @@ const AnalyticsDashboard = () => {
   // State for time period selection
   const [timePeriod, setTimePeriod] = useState<string>("weekly");
 
+  // Update analytics data based on actual transactions
+  useEffect(() => {
+    if (transactions.length === 0) return;
+
+    // Process transactions to generate analytics data
+    updateAnalyticsData();
+  }, [transactions, dateRange, paymentFilter, timePeriod]);
+
+  // Function to update analytics data based on transactions
+  const updateAnalyticsData = () => {
+    // Filter transactions based on date range and payment method
+    let filteredTransactions = [...transactions];
+
+    // Apply date range filter
+    if (dateRange.from) {
+      filteredTransactions = filteredTransactions.filter((transaction) => {
+        const transactionDate = new Date(transaction.date);
+        return dateRange.to
+          ? transactionDate >= dateRange.from && transactionDate <= dateRange.to
+          : transactionDate >= dateRange.from;
+      });
+    }
+
+    // Apply payment method filter
+    if (paymentFilter !== "all") {
+      filteredTransactions = filteredTransactions.filter(
+        (transaction) => transaction.paymentMethod === paymentFilter,
+      );
+    }
+
+    // Calculate revenue data
+    const revenueData = calculateRevenueData(filteredTransactions);
+
+    // Calculate customer metrics
+    const customerMetrics = calculateCustomerMetrics(filteredTransactions);
+
+    // Calculate service popularity
+    const servicePopularity = calculateServicePopularity(filteredTransactions);
+
+    // Update analytics data
+    setAnalyticsData({
+      revenue: revenueData,
+      customers: customerMetrics,
+      services: servicePopularity,
+    });
+  };
+
+  // Calculate revenue data based on time period
+  const calculateRevenueData = (filteredTransactions) => {
+    const daily = [0, 0, 0, 0, 0, 0, 0];
+    const weekly = [0, 0, 0, 0];
+    const monthly = [0, 0, 0, 0, 0, 0];
+
+    // If we have transactions, calculate actual revenue data
+    if (filteredTransactions.length > 0) {
+      // Group transactions by day/week/month and calculate revenue
+      filteredTransactions.forEach((transaction) => {
+        const date = new Date(transaction.date);
+        const dayIndex = date.getDay();
+        const weekIndex = Math.floor(date.getDate() / 7);
+        const monthIndex = date.getMonth() % 6;
+
+        daily[dayIndex] += transaction.total;
+        if (weekIndex < 4) weekly[weekIndex] += transaction.total;
+        monthly[monthIndex] += transaction.total;
+      });
+    }
+
+    return {
+      daily,
+      weekly,
+      monthly,
+    };
+  };
+
+  // Calculate customer metrics
+  const calculateCustomerMetrics = (filteredTransactions) => {
+    // Count unique customers
+    const uniqueCustomers = new Set();
+    const newCustomers = new Set();
+    const returningCustomers = new Set();
+
+    filteredTransactions.forEach((transaction) => {
+      if (transaction.customer?.id) {
+        uniqueCustomers.add(transaction.customer.id);
+
+        // Assuming customers with visits > 1 are returning customers
+        if (transaction.customer.visits > 1) {
+          returningCustomers.add(transaction.customer.id);
+        } else {
+          newCustomers.add(transaction.customer.id);
+        }
+      }
+    });
+
+    return {
+      total: uniqueCustomers.size || analyticsData.customers.total,
+      new: newCustomers.size || analyticsData.customers.new,
+      returning: returningCustomers.size || analyticsData.customers.returning,
+      growth: analyticsData.customers.growth, // Keep the mock growth rate for now
+    };
+  };
+
+  // Calculate service popularity
+  const calculateServicePopularity = (filteredTransactions) => {
+    // Count services by name
+    const serviceCount = {};
+    const categoryRevenue = {
+      Haircuts: 0,
+      "Beard Services": 0,
+      "Hair Treatments": 0,
+      Shaving: 0,
+      Products: 0,
+    };
+
+    filteredTransactions.forEach((transaction) => {
+      transaction.items.forEach((item) => {
+        // Count for popular services
+        if (!serviceCount[item.name]) {
+          serviceCount[item.name] = 0;
+        }
+        serviceCount[item.name] += item.quantity;
+
+        // Add to category revenue
+        if (item.name.includes("Haircut")) {
+          categoryRevenue["Haircuts"] += item.price * item.quantity;
+        } else if (item.name.includes("Beard")) {
+          categoryRevenue["Beard Services"] += item.price * item.quantity;
+        } else if (
+          item.name.includes("Treatment") ||
+          item.name.includes("Coloring")
+        ) {
+          categoryRevenue["Hair Treatments"] += item.price * item.quantity;
+        } else if (item.name.includes("Shave")) {
+          categoryRevenue["Shaving"] += item.price * item.quantity;
+        } else if (item.type === "product") {
+          categoryRevenue["Products"] += item.price * item.quantity;
+        }
+      });
+    });
+
+    // Convert to arrays and sort
+    const popular = Object.entries(serviceCount)
+      .map(([name, count]) => ({ name, count: count as number }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    const categories = Object.entries(categoryRevenue)
+      .map(([name, revenue]) => ({ name, revenue: revenue as number }))
+      .sort((a, b) => b.revenue - a.revenue);
+
+    // If we have actual data, use it; otherwise, keep the mock data
+    return {
+      popular: popular.length > 0 ? popular : analyticsData.services.popular,
+      categories: categories.some((c) => c.revenue > 0)
+        ? categories
+        : analyticsData.services.categories,
+    };
+  };
+
   // Function to format currency in IDR
   const formatIDR = (amount: number) => {
     return new Intl.NumberFormat("id-ID", {
@@ -111,7 +274,39 @@ const AnalyticsDashboard = () => {
   const handleExport = (format: "pdf" | "csv") => {
     // In a real implementation, this would generate and download the report
     console.log(`Exporting ${format} report for period: ${timePeriod}`);
-    alert(`Exporting ${format.toUpperCase()} report (simulation)`);
+
+    // Create a simple CSV or mock PDF export
+    if (format === "csv") {
+      // Create CSV content
+      let csvContent = "data:text/csv;charset=utf-8,";
+      csvContent += "Date,Revenue,Customers\n";
+
+      // Add some sample data
+      const today = new Date();
+      for (let i = 0; i < 7; i++) {
+        const date = new Date(today);
+        date.setDate(date.getDate() - i);
+        const dateStr = date.toLocaleDateString();
+        const revenue = analyticsData.revenue.daily[6 - i] || 0;
+        const customers = Math.floor(revenue / 100000); // Rough estimate
+
+        csvContent += `${dateStr},${revenue},${customers}\n`;
+      }
+
+      // Create download link
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `barbershop_report_${timePeriod}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } else {
+      // For PDF, just show an alert (in a real app, would generate PDF)
+      alert(
+        `Exporting ${format.toUpperCase()} report for ${timePeriod} period`,
+      );
+    }
   };
 
   return (
